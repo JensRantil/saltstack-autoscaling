@@ -188,7 +188,12 @@ def start(queue, profile=None, tag='salt/engine/sqs'):
             msgs = q.get_messages()
         for msg in msgs:
             if message_format == "json":
-                fire(tag, {'message': json.loads(msg.get_body())})
+                sqsmessage = json.loads(msg.get_body())
+                try:
+                    sqsmessage['Message'] = json.loads(sqsmessage['Message'])
+                except ValueError:
+                    pass
+                fire(tag, {'message': sqsmessage})
             else:
                 fire(tag, {'message': msg.get_body()})
             msg.delete()
