@@ -65,6 +65,14 @@ try:
 except ImportError:
     HAS_BOTO = False
 
+try:
+    # Python 3
+    from urllib.request import urlopen
+except ImportError:
+    # Python 2
+    from urllib2 import urlopen
+    
+
 from salt.ext.six import string_types
 
 
@@ -97,9 +105,27 @@ def _get_sqs_conn(profile, region=None, key=None, keyid=None):
         key = __opts__.get('sqs.key', None)
     if not keyid:
         keyid = __opts__.get('sqs.keyid', None)
+
+    extra_params = {}
+    if not keyid and not key and map(int, boto.__version__.split('.')) <= [2,5,1]:
+        # boto version >= 2.5.1 adds transparent support for this. This is a
+        # workaround for older clients.
+
+        roles = urlopen('http://169.254.169.254/latest/meta-data/iam/security-credentials/').read().splitlines()
+        if roles:
+            first_role = roles[0]
+            role_data = json.load(urlopen('http://169.254.169.254/latest/meta-data/iam/security-credentials/' + first_role))
+            keyid = role_data['AccessKeyId']
+            key = role_data['SecretAccessKey']
+
+            # TODO: A security token has an expiration date. Currently, this
+            # will lead to SQS sporadically failing. Retry logic is in place
+            # after 10 seconds which should get an updated token.
+            extra_params['security_token'] = role_data['Token']
+
     try:
         conn = boto.sqs.connect_to_region(region, aws_access_key_id=keyid,
-                                          aws_secret_access_key=key)
+                                          aws_secret_access_key=key, **extra_params)
     except boto.exception.NoAuthHandlerFound:
         log.error('No authentication credentials found when attempting to'
                   ' make sqs_event engine connection to AWS.')
