@@ -1,0 +1,11 @@
+#cloud-config
+# Put this content in your Launch Group's "user data".
+
+runcmd:
+ - "INSTANCE_ID=$(wget -q -O - http://instance-data/latest/meta-data/instance-id)"
+ - "echo PLACEHOLDER_MINION_PREFIX-$INSTANCE_ID > /etc/hostname"
+ - "echo 127.0.1.1 PLACEHOLDER_MINION_PREFIX-$INSTANCE_ID >> /etc/hosts"
+ - "service hostname start"
+ # For increased security, I recommend you download this script once, check its
+ # content and host it yourself.
+ - "wget -O - https://bootstrap.saltstack.com | sudo sh -s -- -A YOUR_MASTER_HOST"
