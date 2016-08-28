@@ -86,6 +86,19 @@ def __virtual__():
 log = logging.getLogger(__name__)
 
 
+class RateLimiter:
+    def __init__(self, min_interval):
+        self._min_interval = min_interval
+        self._last_acquire = None
+
+    def acquire(self):
+        if self._last_acquire is None:
+            return
+        diff_since_last_acquire = time.time() - self._last_acquire
+        time.sleep(0 if diff_since_last_acquire > self._min_interval else self._min_interval - diff_since_last_acquire)
+        self._last_acquire = time.time()
+
+
 def _get_sqs_conn(profile, region=None, key=None, keyid=None):
     '''
     Get a boto connection to SQS.
@@ -157,6 +170,7 @@ def start(queue, profile=None, tag='salt/engine/sqs'):
     q = sqs.get_queue(queue)
     q.set_message_class(boto.sqs.message.RawMessage)
 
+    rate_limiter = RateLimiter(5)
     while True:
         if not q:
             log.warning('failure connecting to queue: {0}, '
@@ -165,10 +179,18 @@ def start(queue, profile=None, tag='salt/engine/sqs'):
             q = sqs.get_queue(queue)
             if not q:
                 continue
-        msgs = q.get_messages(wait_time_seconds=20)
+
+        try:
+            msgs = q.get_messages(wait_time_seconds=20)
+        except TypeError:
+            # Older versions of boto (such as 2.2.2 included with Ubuntu 12.04)
+            # doesn't support long polling. Notice that the `rate_limiter` we don't start pounding AWS.
+            msgs = q.get_messages()
         for msg in msgs:
             if message_format == "json":
                 fire(tag, {'message': json.loads(msg.get_body())})
             else:
                 fire(tag, {'message': msg.get_body()})
             msg.delete()
+        else:
+            rate_limiter.acquire()
