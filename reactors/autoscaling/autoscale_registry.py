@@ -17,6 +17,65 @@ import contextlib
 import sqlite3
 import time
 import collections
+import os
+
+
+def pid_is_running(pid):
+  """Check For the existence of a unix pid. """
+  try:
+    os.kill(pid, 0)
+  except OSError:
+    return False
+  else: return True
+
+
+class InterprocessLock:
+  def __init__(self, path, timeout):
+    self._path = path
+    self._timeout = timeout   # seconds
+
+  def _try_lock_once(self):
+    try:
+      f = os.open(self._path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_TRUNC)
+      try:
+        os.write(f, "{0}".format(os.getpid()))
+      finally:
+        os.close(f)
+      return True
+    except OSError, e:
+      return False
+
+  def _lock_owner_alive(self):
+    try:
+      f = open(self._path)
+      with contextlib.closing(f):
+        return pid_is_running(int(f.read()))
+    except ValueError:
+      return False
+    except IOError:
+      return False
+
+  def _invalidate_lock(self):
+    os.unlink(self._path)
+
+  def _try_lock_with_retry(self):
+    for _ in range(self._timeout):
+      if self._try_lock_once():
+        return True
+      elif not self._lock_owner_alive():
+        self._invalidate_lock()
+      else:
+        time.sleep(1)
+    return False
+
+  def try_lock(self):
+    self._locked = self._try_lock_with_retry()
+    return self._locked
+
+  def close(self):
+    if self._locked:
+      self._invalidate_lock()
+
 
 @contextlib.contextmanager
 def sqlite_connection(path):
@@ -55,7 +114,12 @@ def write_record(conn, record):
 
 
 def new_instance(args):
-  with sqlite_connection(args.database_file) as conn:
+  lock = InterprocessLock("{0}.lock".format(args.database_file), args.lock_timeout)
+  if not lock.try_lock():
+    print "Could not take lock."
+    return 1
+
+  with contextlib.closing(lock), sqlite_connection(args.database_file) as conn:
     create_table_if_not_exist(conn)
     for instance in args.instances:
       record = read_record(conn, instance)
@@ -69,7 +133,12 @@ def new_instance(args):
 
 
 def new_minion(args):
-  with sqlite_connection(args.database_file) as conn:
+  lock = InterprocessLock("{0}.lock".format(args.database_file), args.lock_timeout)
+  if not lock.try_lock():
+    print "Could not take lock."
+    return 1
+
+  with contextlib.closing(lock), sqlite_connection(args.database_file) as conn:
     create_table_if_not_exist(conn)
     for minion in args.minions:
       record = read_record(conn, minion)
@@ -83,7 +152,12 @@ def new_minion(args):
 
 
 def check(args):
-  with sqlite_connection(args.database_file) as conn:
+  lock = InterprocessLock("{0}.lock".format(args.database_file), args.lock_timeout)
+  if not lock.try_lock():
+    print "Could not take lock."
+    return 1
+
+  with contextlib.closing(lock), sqlite_connection(args.database_file) as conn:
     create_table_if_not_exist(conn)
     with sqlite_cursor(conn) as c:
       c.execute("SELECT instanceid FROM instances"
@@ -113,6 +187,8 @@ def main(args):
   parser = argparse.ArgumentParser(description='A small database of minions to be accepted.')
   parser.add_argument('--database-file', default='autoscaling.db',
       help='sqlite3 database where where data is stored.')
+  parser.add_argument('--lock-timeout', metavar='SECONDS', default=30, type=int,
+      help='number of seconds to wait for exclusive database lock')
 
   subparsers = parser.add_subparsers(help='subcommand')
 
