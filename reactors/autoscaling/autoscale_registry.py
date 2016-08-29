@@ -86,14 +86,18 @@ def check(args):
   with sqlite_connection(args.database_file) as conn:
     create_table_if_not_exist(conn)
     with sqlite_cursor(conn) as c:
-      c.execute("SELECT instanceid FROM instances WHERE miniontimestamp IS NULL AND instancetimestamp IS NOT NULL")
+      c.execute("SELECT instanceid FROM instances"
+                " WHERE miniontimestamp IS NULL AND instancetimestamp IS NOT NULL")
       for row in c:
         print "Pending instance registered as minion, but not as EC2 instance: {0}".format(row[0])
-      c.execute("SELECT instanceid FROM instances WHERE miniontimestamp IS NOT NULL AND instancetimestamp IS NULL")
+      c.execute("SELECT instanceid FROM instances"
+                " WHERE miniontimestamp IS NOT NULL AND instancetimestamp IS NULL")
       for row in c:
         print "Pending instance registered as EC2 instance, but not as minion: {0}".format(row[0])
 
-      c.execute("SELECT COUNT(*) FROM instances WHERE miniontimestamp IS NOT NULL AND instancetimestamp IS NOT NULL AND instanceid=?", (args.instance,))
+      c.execute("SELECT COUNT(*) FROM instances "
+                "WHERE miniontimestamp IS NOT NULL AND instancetimestamp IS NOT NULL AND instanceid=?",
+          (args.instance,))
       found = c.fetchone()[0] > 0
 
   if found:
@@ -107,20 +111,29 @@ def check(args):
 
 def main(args):
   parser = argparse.ArgumentParser(description='A small database of minions to be accepted.')
-  parser.add_argument('--database-file', default='autoscaling.db', help='sqlite3 database where where data is stored.')
+  parser.add_argument('--database-file', default='autoscaling.db',
+      help='sqlite3 database where where data is stored.')
 
   subparsers = parser.add_subparsers(help='subcommand')
 
-  new_instance_parser = subparsers.add_parser('new-instance', help='register a new instance started')
-  new_instance_parser.add_argument('instances', nargs='+', metavar='INSTANCE', help='instance(s) to be added')
+  new_instance_parser = subparsers.add_parser('new-instance',
+      help='register a new instance started')
+  new_instance_parser.add_argument('instances', nargs='+', metavar='INSTANCE',
+      help='instance(s) to be added')
   new_instance_parser.set_defaults(func=new_instance)
 
-  new_minion_parser = subparsers.add_parser('new-minion', help='register a new minion registered')
-  new_minion_parser.add_argument('minions', nargs='+', metavar='MINION', help='minion(s) to be added')
+  new_minion_parser = subparsers.add_parser('new-minion',
+      help='register a new minion registered')
+  new_minion_parser.add_argument('minions', nargs='+', metavar='MINION',
+      help='minion(s) to be added')
   new_minion_parser.set_defaults(func=new_minion)
 
-  check_parser = subparsers.add_parser('check', help='check if instance is registered both in EC2 and Salt. This is to avoid autoaccepting minions not in autoscaling groups. Also logs pending minions. Returns 0 if instance is not pending, 1 otherwise.')
-  check_parser.add_argument('instance', metavar='INSTANCE', help='minion(s) to be added')
+  check_parser = subparsers.add_parser('check', help=('check if instance is'
+      ' registered both in EC2 and Salt. This is to avoid autoaccepting minions'
+      ' not in autoscaling groups. Also logs pending minions. Returns 0 if'
+      ' instance is not pending, 1 otherwise.'))
+  check_parser.add_argument('instance', metavar='INSTANCE',
+      help='minion(s) to be added')
   check_parser.set_defaults(func=check)
   
   args = parser.parse_args()
