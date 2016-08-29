@@ -14,6 +14,7 @@ TODO: Add a pruning command to eventually delete old data.
 import argparse
 import collections
 import contextlib
+import datetime
 import os
 import sqlite3
 import sys
@@ -183,6 +184,25 @@ def check(args):
     print "The minion is NOT ready for acceptance."
     return 1
 
+
+def purge(args):
+  lock = InterprocessLock("{0}.lock".format(args.database_file), args.lock_timeout)
+  if not lock.try_lock():
+    print "Could not take lock."
+    return 1
+
+  duration = datetime.timedelta(**{args.unit[0]: args.duration[0]}).total_seconds()
+  purge_older_than = time.time() - duration
+
+  with contextlib.closing(lock), sqlite_connection(args.database_file) as conn:
+    create_table_if_not_exist(conn)
+    with sqlite_cursor(conn) as c:
+      c.execute("DELETE FROM instances"
+          " WHERE (miniontimestamp < ? or miniontimestamp IS NULL)"
+          " AND (instancetimestamp < ? or instancetimestamp IS NULL)",
+          (purge_older_than, purge_older_than,))
+      print "Deleted", c.rowcount, "rows."
+      conn.commit()
   
 
 def main(args):
@@ -205,6 +225,15 @@ def main(args):
   new_minion_parser.add_argument('minions', nargs='+', metavar='MINION',
       help='minion(s) to be added')
   new_minion_parser.set_defaults(func=new_minion)
+
+  purge_parser = subparsers.add_parser('purge',
+      help='purge older records from the database')
+  purge_parser.add_argument('duration', nargs=1, metavar='DURATION', type=int,
+      help='time duration')
+  purge_parser.add_argument('unit', nargs=1, metavar='UNIT',
+      choices=('seconds', 'minutes','hours', 'days', 'weeks'), default='days',
+      help='minion(s) to be added')
+  purge_parser.set_defaults(func=purge)
 
   check_parser = subparsers.add_parser('check', help=('check if instance is'
       ' registered both in EC2 and Salt. This is to avoid autoaccepting minions'

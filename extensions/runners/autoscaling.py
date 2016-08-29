@@ -78,3 +78,8 @@ def tag_aws_instance(resourceid, name):
   # AWS credentials in its user's home directory.
   subprocess.call(['aws', 'ec2', 'create-tags', '--resources', resourceid,
     '--tags', 'Key=Name,Value={0}'.format(name)])
+
+
+def cleanup():
+  registry_call = _registry_call(database_location, registry_script)
+  subprocess.call(registry_call + ['purge', '60', 'days'])

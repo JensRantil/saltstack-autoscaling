@@ -17,4 +17,7 @@ accept_minion_if_pending:
 delete_minion_key:
   wheel.key.delete:
     - match: {{ minionid }}
+
+autoscale_cleanup_maintenance:
+  runner.autoscaling.cleanup: []
 {% endif %}
