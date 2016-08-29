@@ -12,12 +12,12 @@ script keeps a small sqlite database of the auto-scaling states minions are in.
 TODO: Add a pruning command to eventually delete old data.
 """
 import argparse
-import sys
-import contextlib
-import sqlite3
-import time
 import collections
+import contextlib
 import os
+import sqlite3
+import sys
+import time
 
 
 def pid_is_running(pid):
@@ -165,12 +165,14 @@ def check(args):
       for row in c:
         print "Pending instance registered as minion, but not as EC2 instance: {0}".format(row[0])
       c.execute("SELECT instanceid FROM instances"
-                " WHERE miniontimestamp IS NOT NULL AND instancetimestamp IS NULL")
+                " WHERE miniontimestamp IS NOT NULL"
+                " AND instancetimestamp IS NULL")
       for row in c:
         print "Pending instance registered as EC2 instance, but not as minion: {0}".format(row[0])
 
       c.execute("SELECT COUNT(*) FROM instances "
-                "WHERE miniontimestamp IS NOT NULL AND instancetimestamp IS NOT NULL AND instanceid=?",
+                "WHERE miniontimestamp IS NOT NULL"
+                " AND instancetimestamp IS NOT NULL AND instanceid=?",
           (args.instance,))
       found = c.fetchone()[0] > 0
 
